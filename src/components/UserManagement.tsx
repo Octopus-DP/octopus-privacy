@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Users, Plus, Pencil, Trash2, Mail, Shield, Building2, Filter } from 'lucide-react';
 import { Button } from './ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
@@ -6,48 +6,44 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { Switch } from './ui/switch';
 import { Badge } from './ui/badge';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from './ui/alert-dialog';
+import { supabase } from '../lib/supabase';
+import { toast } from 'sonner';
 
 interface User {
   id: string;
   email: string;
   name: string;
-  clientId: string;
+  client_id: string;
+  client_code: string;
+  role: string;
   permissions: {
     registre: boolean;
     droits: boolean;
     violations: boolean;
     phishing: boolean;
   };
-  createdAt: string;
+  is_active: boolean;
+  created_at: string;
 }
 
 interface Client {
   id: string;
+  code: string;
   name: string;
 }
 
 interface UserManagementProps {
-  users: User[];
-  clients: Client[];
-  selectedClientId: string | null;
-  onClientSelect: (clientId: string) => void;
-  onCreate: (data: any) => Promise<any>;
-  onUpdate: (id: string, data: any) => Promise<void>;
-  onDelete: (id: string) => Promise<void>;
+  userData: any;
+  accessToken: string;
 }
 
-export function UserManagement({ 
-  users, 
-  clients, 
-  selectedClientId,
-  onClientSelect,
-  onCreate, 
-  onUpdate, 
-  onDelete 
-}: UserManagementProps) {
+export function UserManagement({ userData, accessToken }: UserManagementProps) {
+  const [users, setUsers] = useState<User[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
+  const [selectedClientId, setSelectedClientId] = useState<string>('');
+  const [loading, setLoading] = useState(true);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [formData, setFormData] = useState({
@@ -62,6 +58,78 @@ export function UserManagement({
       phishing: true,
     },
   });
+
+  useEffect(() => {
+    loadClients();
+    loadUsers();
+  }, []);
+
+  useEffect(() => {
+    loadUsers();
+  }, [selectedClientId]);
+
+  const loadClients = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('clients')
+        .select('id, code, name')
+        .eq('status', 'active')
+        .order('name');
+
+      if (error) throw error;
+      setClients(data || []);
+    } catch (error) {
+      console.error('Error loading clients:', error);
+      toast.error('Erreur lors du chargement des clients');
+    }
+  };
+
+  const loadUsers = async () => {
+    try {
+      setLoading(true);
+      
+      let query = supabase
+        .from('users')
+        .select(`
+          *,
+          clients (
+            id,
+            code,
+            name
+          )
+        `)
+        .eq('role', 'client_admin')
+        .order('created_at', { ascending: false });
+
+      // Filtrer par client si sélectionné
+      if (selectedClientId) {
+        query = query.eq('client_id', selectedClientId);
+      }
+
+      const { data, error } = await query;
+
+      if (error) throw error;
+
+      // Mapper les données vers le format attendu
+      const mappedUsers = (data || []).map((u: any) => ({
+        ...u,
+        clientId: u.client_id, // Compat ancien format
+        permissions: u.permissions || {
+          registre: true,
+          droits: true,
+          violations: true,
+          phishing: true,
+        },
+      }));
+
+      setUsers(mappedUsers);
+    } catch (error) {
+      console.error('Error loading users:', error);
+      toast.error('Erreur lors du chargement des utilisateurs');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const resetForm = () => {
     setFormData({
@@ -82,39 +150,98 @@ export function UserManagement({
   const handleCreate = async () => {
     try {
       if (!formData.clientId) {
-        alert('Veuillez sélectionner un client');
+        toast.error('Veuillez sélectionner un client');
         return;
       }
-      await onCreate(formData);
+
+      if (!formData.email || !formData.password || !formData.name) {
+        toast.error('Tous les champs sont requis');
+        return;
+      }
+
+      // Générer un ID unique
+      const userId = `user_${Date.now()}`;
+
+      // Trouver le client sélectionné
+      const selectedClient = clients.find(c => c.id === formData.clientId);
+      
+      const userData = {
+        id: userId,
+        email: formData.email.toLowerCase(),
+        name: formData.name,
+        role: 'client_admin',
+        client_id: formData.clientId,
+        client_code: selectedClient?.code || '',
+        client_name: selectedClient?.name || '',
+        is_active: true,
+        permissions: JSON.parse(JSON.stringify(formData.permissions)),
+        created_by: (userData && userData.email) ? userData.email : 'system',
+      };
+
+      const { data, error } = await supabase
+        .from('users')
+        .insert([userData])
+        .select()
+        .single();
+
+      if (error) {
+        if (error.code === '23505') { // Unique violation
+          toast.error('Cet email est déjà utilisé');
+        } else {
+          throw error;
+        }
+        return;
+      }
+
+      toast.success('Utilisateur créé avec succès');
       setIsCreateOpen(false);
       resetForm();
-    } catch (error) {
+      await loadUsers();
+    } catch (error: any) {
       console.error('Error creating user:', error);
-      alert('Erreur lors de la création de l\'utilisateur');
+      toast.error(error.message || 'Erreur lors de la création de l\'utilisateur');
     }
   };
 
   const handleUpdate = async () => {
     if (!editingUser) return;
+    
     try {
-      await onUpdate(editingUser.id, {
-        name: formData.name,
-        permissions: formData.permissions,
-      });
+      const { error } = await supabase
+        .from('users')
+        .update({
+          name: formData.name,
+          permissions: JSON.parse(JSON.stringify(formData.permissions)),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', editingUser.id);
+
+      if (error) throw error;
+
+      toast.success('Utilisateur modifié avec succès');
       setEditingUser(null);
       resetForm();
-    } catch (error) {
+      await loadUsers();
+    } catch (error: any) {
       console.error('Error updating user:', error);
-      alert('Erreur lors de la modification de l\'utilisateur');
+      toast.error(error.message || 'Erreur lors de la modification de l\'utilisateur');
     }
   };
 
   const handleDelete = async (id: string) => {
     try {
-      await onDelete(id);
-    } catch (error) {
+      const { error } = await supabase
+        .from('users')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+
+      toast.success('Utilisateur supprimé');
+      await loadUsers();
+    } catch (error: any) {
       console.error('Error deleting user:', error);
-      alert('Erreur lors de la suppression de l\'utilisateur');
+      toast.error(error.message || 'Erreur lors de la suppression de l\'utilisateur');
     }
   };
 
@@ -124,7 +251,7 @@ export function UserManagement({
       email: user.email,
       password: '',
       name: user.name,
-      clientId: user.clientId,
+      clientId: user.client_id,
       permissions: { ...user.permissions },
     });
   };
@@ -134,8 +261,16 @@ export function UserManagement({
     return client?.name || 'Client inconnu';
   };
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600"></div>
+      </div>
+    );
+  }
+
   const filteredUsers = selectedClientId 
-    ? users.filter(user => user.clientId === selectedClientId)
+    ? users.filter(user => user.client_id === selectedClientId)
     : users;
 
   return (
@@ -154,9 +289,9 @@ export function UserManagement({
             value={selectedClientId || 'all'}
             onValueChange={(value) => {
               if (value === 'all') {
-                onClientSelect('');
+                setSelectedClientId('');
               } else {
-                onClientSelect(value);
+                setSelectedClientId(value);
               }
             }}
           >
@@ -293,7 +428,7 @@ export function UserManagement({
                     <div>
                       <CardTitle className="text-lg">{user.name}</CardTitle>
                       <CardDescription>
-                        {getClientName(user.clientId)}
+                        {getClientName(user.client_id)}
                       </CardDescription>
                     </div>
                   </div>
@@ -308,16 +443,16 @@ export function UserManagement({
                 <div>
                   <p className="text-sm text-gray-500 mb-2">Accès autorisés :</p>
                   <div className="flex flex-wrap gap-2">
-                    {user.permissions.registre && (
+                    {user.permissions?.registre && (
                       <Badge variant="secondary">Registre</Badge>
                     )}
-                    {user.permissions.droits && (
+                    {user.permissions?.droits && (
                       <Badge variant="secondary">Droits</Badge>
                     )}
-                    {user.permissions.violations && (
+                    {user.permissions?.violations && (
                       <Badge variant="secondary">Violations</Badge>
                     )}
-                    {user.permissions.phishing && (
+                    {user.permissions?.phishing && (
                       <Badge variant="secondary">Phishing</Badge>
                     )}
                   </div>

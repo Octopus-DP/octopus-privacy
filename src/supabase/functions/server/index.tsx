@@ -2,9 +2,9 @@ import { Hono } from "npm:hono";
 import { cors } from "npm:hono/cors";
 import { logger } from "npm:hono/logger";
 import { createClient } from "npm:@supabase/supabase-js@2";
-import * as kv from "./kv_store.tsx";
-import { cache, TTL, CacheKeys } from "./cache.tsx";
-import { initializeArchiveBucket, archiveOldHistory, archiveAllHistory, getArchivedHistory, listArchivedYears, getArchiveStats } from "./archiver.tsx";
+//import * as kv from "./kv_store.tsx";
+//import { cache, TTL, CacheKeys } from "./cache.tsx";
+//import { initializeArchiveBucket, archiveOldHistory, archiveAllHistory, getArchivedHistory, listArchivedYears, getArchiveStats } from "./archiver.tsx";
 import { setupClientAdminRoutes } from "./client-admin.tsx";
 import { setupPhishingRoutes } from "./phishing.tsx";
 import { initializeDefaultTemplates } from "./phishing-templates-init.tsx";
@@ -23,7 +23,7 @@ const getAnonClient = () => createClient(
 );
 
 // Initialize archive bucket on startup
-initializeArchiveBucket();
+//initializeArchiveBucket();
 
 // Initialize default phishing templates
 initializeDefaultTemplates();
