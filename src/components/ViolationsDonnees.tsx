@@ -170,9 +170,9 @@ export function ViolationsDonnees({ userData, accessToken, entityId }: Violation
       const dataToSave = {
         id: newId,
         ...mapViolationFormToSQL(formData),
-        entity_id: null,
-        client_id: 'client_demo_001',
-        client_code: 'OCTOPUS',
+        client_id: userData.client_id,
+        client_code: userData.client_code,
+        entity_id: userData?.legal_entity_ids?.[0] || null,
         created_by: editingViolation ? undefined : userData?.email || 'system',
         updated_by: userData?.email || 'system',
       };

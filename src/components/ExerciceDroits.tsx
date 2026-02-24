@@ -168,9 +168,9 @@ export function ExerciceDroits({ userData, accessToken, entityId }: ExerciceDroi
       const dataToSave = {
         id: newId,
         ...mapDemandeFormToSQL(formData),
-        entity_id: null,
-        client_id: 'client_demo_001',
-        client_code: 'OCTOPUS',
+        entity_id: userData?.legal_entity_ids?.[0] || null,
+        client_id: userData.client_id,
+        client_code: userData.client_code,
         created_by: editingDemande ? undefined : userData?.email || 'system',
         updated_by: userData?.email || 'system',
       };
