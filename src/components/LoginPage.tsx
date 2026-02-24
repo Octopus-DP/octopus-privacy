@@ -6,6 +6,7 @@ import { Label } from './ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Alert, AlertDescription } from './ui/alert';
 import { supabase } from '../lib/supabase';
+import bcrypt from 'bcryptjs';
 
 interface LoginPageProps {
   onLogin: (userData: any, token: string) => void;
@@ -23,40 +24,50 @@ export function LoginPage({ onLogin }: LoginPageProps) {
     setLoading(true);
 
     try {
-      // Appeler la fonction PostgreSQL de vérification de login
-      const { data, error } = await supabase
-        .rpc('verify_login', {
-          user_email: email,
-          user_password: password
-        });
+      // 1. Récupérer l'utilisateur par email
+      const { data: users, error: fetchError } = await supabase
+        .from('users')
+        .select('*')
+        .eq('email', email)
+        .eq('is_active', true)
+        .limit(1);
 
-      if (error) throw error;
+      if (fetchError) throw fetchError;
 
-      if (!data || data.length === 0) {
+      if (!users || users.length === 0) {
         setError('Email ou mot de passe incorrect');
         setLoading(false);
         return;
       }
 
-      const userData = data[0];
+      const userData = users[0];
 
-      // Créer un token simple (en production, utiliser JWT)
+      // 2. Vérifier le password avec bcrypt
+      const isPasswordValid = await bcrypt.compare(password, userData.password_hash);
+
+      if (!isPasswordValid) {
+        setError('Email ou mot de passe incorrect');
+        setLoading(false);
+        return;
+      }
+
+      // 3. Créer un token simple
       const token = btoa(JSON.stringify({ 
         userId: userData.id, 
         email: userData.email,
         timestamp: Date.now() 
       }));
 
-      // Stocker dans localStorage
+      // 4. Stocker dans localStorage
       localStorage.setItem('authToken', token);
       localStorage.setItem('userData', JSON.stringify(userData));
 
-      // Appeler onLogin
+      // 5. Appeler onLogin avec les bons paramètres
       onLogin(
-        userData.client_name,        // clientName
-        token,                         // token
-        userData.role === 'super_admin', // admin
-        userData                       // user
+        userData.client_name,
+        token,
+        userData.role === 'super_admin',
+        userData
       );
     } catch (err: any) {
       console.error('Login error:', err);

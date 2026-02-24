@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { Users, Plus, Trash2, Edit2, Mail, Shield, Building2, FileText, AlertTriangle, User as UserIcon, Eye, EyeOff, Save, X } from 'lucide-react';
 import { Button } from './ui/button';
-import { projectId } from '../utils/supabase/info';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
+import { supabase } from '../lib/supabase';
+import bcrypt from 'bcryptjs';
 
 interface ClientUserManagementProps {
   userData?: any;
@@ -21,10 +22,11 @@ interface User {
     violations: boolean;
     phishing: boolean;
   };
-  legalEntityIds: string[];
-  clientCode: string;
-  invitedAt?: string;
-  activatedAt?: string;
+  legal_entity_ids: string[];
+  client_code: string;
+  invited_at?: string;
+  created_at?: string;
+  is_active: boolean;
 }
 
 export function ClientUserManagement({ userData, accessToken, legalEntities }: ClientUserManagementProps) {
@@ -32,8 +34,6 @@ export function ClientUserManagement({ userData, accessToken, legalEntities }: C
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
-
-  const apiUrl = `https://${projectId}.supabase.co/functions/v1/make-server-abb8d15d`;
 
   // Form state
   const [formData, setFormData] = useState({
@@ -56,18 +56,17 @@ export function ClientUserManagement({ userData, accessToken, legalEntities }: C
   const loadUsers = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`${apiUrl}/client-admin/users`, {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-        },
-      });
 
-      if (!response.ok) {
-        throw new Error('Failed to load users');
-      }
+      // Charger les utilisateurs du même client
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('client_id', userData?.client_id)
+        .order('created_at', { ascending: false });
 
-      const data = await response.json();
-      setUsers(data.users || []);
+      if (error) throw error;
+
+      setUsers(data || []);
     } catch (error) {
       console.error('Error loading users:', error);
       toast.error('Erreur lors du chargement des utilisateurs');
@@ -88,29 +87,49 @@ export function ClientUserManagement({ userData, accessToken, legalEntities }: C
     }
 
     try {
-      console.log('Creating user with data:', formData);
-      
-      const response = await fetch(`${apiUrl}/client-admin/users`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify(formData),
-      });
+      // Générer un ID unique
+      const userId = `user_${Date.now()}`;
 
-      console.log('Response status:', response.status);
-      const data = await response.json();
-      console.log('Response data:', data);
+      // Hash d'un mot de passe temporaire
+      const tempPassword = 'ChangeMe123!';
+      const passwordHash = await bcrypt.hash(tempPassword, 10);
 
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to create user');
+      // Préparer les données utilisateur
+      const newUser = {
+        id: userId,
+        email: formData.email.toLowerCase(),
+        name: formData.name,
+        role: formData.role,
+        client_id: userData.client_id,
+        client_code: userData.client_code,
+        client_name: userData.client_name,
+        is_active: true,
+        permissions: JSON.parse(JSON.stringify(formData.permissions)),
+        legal_entity_ids: formData.legalEntityIds,
+        password_hash: passwordHash,
+        password_change_required: true,
+        created_by: userData.email,
+      };
+
+      const { data, error } = await supabase
+        .from('users')
+        .insert([newUser])
+        .select()
+        .single();
+
+      if (error) {
+        if (error.code === '23505') {
+          toast.error('Cet email est déjà utilisé');
+        } else {
+          throw error;
+        }
+        return;
       }
 
-      toast.success('Utilisateur créé avec succès');
+      toast.success(`Utilisateur créé avec succès. Mot de passe temporaire : ${tempPassword}`);
       setShowCreateModal(false);
       resetForm();
-      loadUsers();
+      await loadUsers();
     } catch (error: any) {
       console.error('Error creating user:', error);
       toast.error(error.message || 'Erreur lors de la création de l\'utilisateur');
@@ -126,29 +145,22 @@ export function ClientUserManagement({ userData, accessToken, legalEntities }: C
     }
 
     try {
-      const response = await fetch(`${apiUrl}/client-admin/users/${editingUser.id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({
+      const { error } = await supabase
+        .from('users')
+        .update({
           role: formData.role,
-          permissions: formData.permissions,
-          legalEntityIds: formData.legalEntityIds,
-        }),
-      });
+          permissions: JSON.parse(JSON.stringify(formData.permissions)),
+          legal_entity_ids: formData.legalEntityIds,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', editingUser.id);
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to update user');
-      }
+      if (error) throw error;
 
       toast.success('Utilisateur mis à jour avec succès');
       setEditingUser(null);
       resetForm();
-      loadUsers();
+      await loadUsers();
     } catch (error: any) {
       console.error('Error updating user:', error);
       toast.error(error.message || 'Erreur lors de la mise à jour de l\'utilisateur');
@@ -161,19 +173,15 @@ export function ClientUserManagement({ userData, accessToken, legalEntities }: C
     }
 
     try {
-      const response = await fetch(`${apiUrl}/client-admin/users/${userId}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-        },
-      });
+      const { error } = await supabase
+        .from('users')
+        .delete()
+        .eq('id', userId);
 
-      if (!response.ok) {
-        throw new Error('Failed to delete user');
-      }
+      if (error) throw error;
 
       toast.success('Utilisateur supprimé avec succès');
-      loadUsers();
+      await loadUsers();
     } catch (error) {
       console.error('Error deleting user:', error);
       toast.error('Erreur lors de la suppression de l\'utilisateur');
@@ -182,23 +190,8 @@ export function ClientUserManagement({ userData, accessToken, legalEntities }: C
 
   const handleSendInvitation = async (userId: string) => {
     try {
-      const response = await fetch(`${apiUrl}/client-admin/send-invitation`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({ userId }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to send invitation');
-      }
-
-      toast.success('Invitation envoyée avec succès');
-      loadUsers();
+      // TODO: Implémenter l'envoi d'email via Mailjet ou autre service
+      toast.info('Fonctionnalité d\'invitation à venir');
     } catch (error: any) {
       console.error('Error sending invitation:', error);
       toast.error(error.message || 'Erreur lors de l\'envoi de l\'invitation');
@@ -227,7 +220,7 @@ export function ClientUserManagement({ userData, accessToken, legalEntities }: C
       email: user.email,
       role: user.role,
       permissions: user.permissions,
-      legalEntityIds: user.legalEntityIds,
+      legalEntityIds: user.legal_entity_ids || [],
     });
   };
 
@@ -338,26 +331,26 @@ export function ClientUserManagement({ userData, accessToken, legalEntities }: C
                       </span>
                     </td>
                     <td className="px-6 py-4">
-                      <div className="flex gap-1">
-                        {user.permissions.registre && (
+                      <div className="flex gap-1 flex-wrap">
+                        {user.permissions?.registre && (
                           <span className="inline-flex items-center px-2 py-1 rounded bg-blue-100 text-blue-700 text-xs">
                             <FileText className="h-3 w-3 mr-1" />
                             Traitements
                           </span>
                         )}
-                        {user.permissions.droits && (
+                        {user.permissions?.droits && (
                           <span className="inline-flex items-center px-2 py-1 rounded bg-green-100 text-green-700 text-xs">
                             <Users className="h-3 w-3 mr-1" />
                             Droits
                           </span>
                         )}
-                        {user.permissions.violations && (
+                        {user.permissions?.violations && (
                           <span className="inline-flex items-center px-2 py-1 rounded bg-orange-100 text-orange-700 text-xs">
                             <AlertTriangle className="h-3 w-3 mr-1" />
                             Violations
                           </span>
                         )}
-                        {user.permissions.phishing && (
+                        {user.permissions?.phishing && (
                           <span className="inline-flex items-center px-2 py-1 rounded bg-red-100 text-red-700 text-xs">
                             <AlertTriangle className="h-3 w-3 mr-1" />
                             Phishing
@@ -367,37 +360,28 @@ export function ClientUserManagement({ userData, accessToken, legalEntities }: C
                     </td>
                     <td className="px-6 py-4">
                       <p className="text-sm text-gray-900">
-                        {user.legalEntityIds.length === legalEntities.length
+                        {(user.legal_entity_ids?.length || 0) === legalEntities.length
                           ? 'Toutes'
-                          : `${user.legalEntityIds.length} entité(s)`}
+                          : `${user.legal_entity_ids?.length || 0} entité(s)`}
                       </p>
                     </td>
                     <td className="px-6 py-4">
-                      {user.activatedAt ? (
+                      {user.is_active ? (
                         <span className="inline-flex items-center px-2 py-1 rounded-full bg-green-100 text-green-700 text-xs">
-                          Activé
+                          Actif
                         </span>
-                      ) : user.invitedAt ? (
+                      ) : user.invited_at ? (
                         <span className="inline-flex items-center px-2 py-1 rounded-full bg-yellow-100 text-yellow-700 text-xs">
                           Invité
                         </span>
                       ) : (
                         <span className="inline-flex items-center px-2 py-1 rounded-full bg-gray-100 text-gray-700 text-xs">
-                          En attente
+                          Inactif
                         </span>
                       )}
                     </td>
                     <td className="px-6 py-4 text-right">
                       <div className="flex items-center justify-end gap-2">
-                        {!user.invitedAt && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleSendInvitation(user.id)}
-                          >
-                            <Mail className="h-4 w-4" />
-                          </Button>
-                        )}
                         <Button
                           variant="outline"
                           size="sm"
