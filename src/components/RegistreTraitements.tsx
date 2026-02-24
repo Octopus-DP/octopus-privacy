@@ -37,6 +37,9 @@ export function RegistreTraitements({ userData, accessToken, entityId }: Registr
     try {
       setLoading(true);
       
+      const clientCode = userData?.clientCode || 'OCTOPUS';
+      console.log('userData:', userData);
+      console.log('clientCode:', clientCode);
       // Nouvelle requête SQL avec Supabase
       let query = supabase
         .from('traitements')
@@ -48,7 +51,7 @@ export function RegistreTraitements({ userData, accessToken, entityId }: Registr
             siren
           )
         `)
-        .eq('client_code', userData.clientCode || 'DEMO001')
+        .eq('client_code', userData.clientCode || 'OCTOPUS')
         .order('created_at', { ascending: false });
 
       // Filtrer par entité si fourni
@@ -122,9 +125,9 @@ export function RegistreTraitements({ userData, accessToken, entityId }: Registr
       const dataToSave = {
         id: newId,
         ...mapFormDataToSQL(formData),  // ← Utiliser la fonction de mapping
-        entity_id: null,  // ← Forcer à null pour l'instant
-        client_id: 'client_demo_001',  // ← Forcer le client demo
-        client_code: 'DEMO001',         // ← Forcer le code demo
+        entity_id: userData?.legal_entity_ids?.[0] || null,
+        client_id: userData.client_id,
+        client_code: userData.client_code,
         created_by: editingTraitement ? undefined : userData.email,
         updated_by: userData.email,
       };

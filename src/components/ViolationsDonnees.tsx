@@ -127,7 +127,7 @@ export function ViolationsDonnees({ userData, accessToken, entityId }: Violation
             name
           )
         `)
-        .eq('client_code', 'DEMO001')
+        .eq('client_code', 'OCTOPUS')
         .order('created_at', { ascending: false });
 
       // Filtrer par entité si fourni
@@ -172,7 +172,7 @@ export function ViolationsDonnees({ userData, accessToken, entityId }: Violation
         ...mapViolationFormToSQL(formData),
         entity_id: null,
         client_id: 'client_demo_001',
-        client_code: 'DEMO001',
+        client_code: 'OCTOPUS',
         created_by: editingViolation ? undefined : userData?.email || 'system',
         updated_by: userData?.email || 'system',
       };

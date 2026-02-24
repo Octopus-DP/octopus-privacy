@@ -8,6 +8,7 @@ import { UserProfile } from './UserProfile';
 import { ClientUserManagement } from './ClientUserManagement';
 import { PhishingDashboard } from './PhishingDashboard';
 import { projectId } from '../utils/supabase/info';
+import { supabase } from '../lib/supabase';
 import logoImage from 'figma:asset/8b41da225a8555c958a767da49b2bb7bdc17e6a6.png';
 
 interface ClientDashboardProps {
@@ -69,48 +70,52 @@ export function ClientDashboard({ clientName, onLogout, userData, accessToken }:
   const [activeTab, setActiveTab] = useState<Tab>(getDefaultTab());
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  // Load user's legal entities
-  useEffect(() => {
-    const fetchLegalEntities = async () => {
-      try {
-        const response = await fetch(`${apiUrl}/user/legal-entities`, {
-          headers: {
-            'Authorization': `Bearer ${accessToken}`,
-          },
-        });
+// Load user's legal entities
+useEffect(() => {
+  const fetchLegalEntities = async () => {
+    console.log('userData:', userData);
+    console.log('legal_entity_ids:', userData?.legal_entity_ids);
+    try {
+      setLoadingEntities(true);
 
-        console.log('Response status:', response.status);
-        console.log('Response ok:', response.ok);
+      // Récupérer les entités juridiques de l'utilisateur
+      const entityIds = userData?.legal_entity_ids || [];
 
-        if (!response.ok) {
-          const errorText = await response.text();
-          console.error('Error response:', errorText);
-          throw new Error(`Failed to fetch legal entities: ${response.status} - ${errorText}`);
-        }
-
-        const data = await response.json();
-        console.log('Legal entities response:', data);
-        console.log('Number of entities:', data.entities?.length);
-        if (data.success && data.entities) {
-          setLegalEntities(data.entities);
-          // Select first entity by default
-          if (data.entities.length > 0) {
-            setSelectedEntityId(data.entities[0].id);
-          }
-        } else {
-          console.error('No entities found or error:', data);
-        }
-      } catch (error) {
-        console.error('Error fetching legal entities:', error);
-      } finally {
+      if (entityIds.length === 0) {
+        console.log('User has no legal entities assigned');
+        setLegalEntities([]);
         setLoadingEntities(false);
+        return;
       }
-    };
 
-    if (accessToken) {
-      fetchLegalEntities();
+      // Charger les entités depuis PostgreSQL
+      const { data, error } = await supabase
+        .from('legal_entities')
+        .select('*')
+        .in('id', entityIds);
+
+      if (error) {
+        console.error('Error fetching legal entities:', error);
+        throw error;
+      }
+
+      console.log('Legal entities loaded:', data);
+      
+      if (data && data.length > 0) {
+        setLegalEntities(data);
+        setSelectedEntityId(data[0].id);
+      } else {
+        setLegalEntities([]);
+      }
+    } catch (error) {
+      console.error('Error fetching legal entities:', error);
+    } finally {
+      setLoadingEntities(false);
     }
-  }, [accessToken]);
+  };
+
+  fetchLegalEntities();
+}, [userData]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
