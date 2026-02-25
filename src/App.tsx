@@ -1,125 +1,49 @@
 import { useState, useEffect } from 'react';
-import { HomePage } from './components/HomePage';
 import { LoginPage } from './components/LoginPage';
 import { ClientDashboard } from './components/ClientDashboard';
-import { AdminDashboardNew } from './components/AdminDashboardNew';
-import { SetupWizard } from './components/SetupWizard';
-import { PasswordChangeRequired } from './components/PasswordChangeRequired';
-import { FunctionalSchema } from './components/FunctionalSchema';
-import { projectId, publicAnonKey } from './utils/supabase/info';
+import { AdminDashboard } from './components/AdminDashboard';
 import { Toaster } from 'sonner';
-import { TestSupabase } from './components/TestSupabase';
 
 export default function App() {
-  const [currentPage, setCurrentPage] = useState<'home' | 'login' | 'dashboard' | 'admin' | 'setup' | 'changePassword' | 'schema'>('home');
+  const [currentPage, setCurrentPage] = useState<'login' | 'dashboard' | 'admin'>('login');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [currentClient, setCurrentClient] = useState<string>('');
-  const [accessToken, setAccessToken] = useState<string>('');
-  const [isAdmin, setIsAdmin] = useState(false);
   const [userData, setUserData] = useState<any>(null);
   const [isInitializing, setIsInitializing] = useState(true);
-  const [needsSetup, setNeedsSetup] = useState(false);
 
-  const apiUrl = `https://${projectId}.supabase.co/functions/v1/make-server-abb8d15d`;
-
+  // Restaurer la session depuis localStorage au démarrage
   useEffect(() => {
-    // Check if there's an existing session and if setup is needed
-    const checkSession = async () => {
-      // First check if admin is initialized
+    const storedToken = localStorage.getItem('authToken');
+    const storedUser = localStorage.getItem('userData');
+
+    if (storedToken && storedUser) {
       try {
-        console.log('Checking if setup is needed...');
-        const setupCheckResponse = await fetch(`${apiUrl}/check-setup`, {
-          headers: {
-            'Authorization': `Bearer ${publicAnonKey}`,
-          },
-        });
-        console.log('Setup check response status:', setupCheckResponse.status);
-        
-        const setupData = await setupCheckResponse.json();
-        console.log('Setup check data:', setupData);
-        
-        if (!setupData.isSetup) {
-          console.log('Setup needed, showing setup wizard');
-          setNeedsSetup(true);
-          setCurrentPage('setup');
-          setIsInitializing(false);
-          return;
-        }
-        
-        console.log('Setup already done, checking session...');
-      } catch (error) {
-        console.error('Setup check error:', error);
-        // If there's an error checking setup, assume setup is needed
-        console.log('Error checking setup, assuming setup needed');
-        setNeedsSetup(true);
-        setCurrentPage('setup');
-        setIsInitializing(false);
-        return;
+        const user = JSON.parse(storedUser);
+        setIsAuthenticated(true);
+        setUserData(user);
+        setCurrentPage(user.role === 'super_admin' ? 'admin' : 'dashboard');
+      } catch (e) {
+        // Session corrompue → on nettoie
+        localStorage.removeItem('authToken');
+        localStorage.removeItem('userData');
       }
+    }
 
-      const storedToken = localStorage.getItem('accessToken');
-      if (storedToken) {
-        try {
-          console.log('Found stored token, verifying session...');
-          const response = await fetch(`${apiUrl}/auth/session`, {
-            headers: {
-              'Authorization': `Bearer ${storedToken}`,
-            },
-          });
-          const data = await response.json();
-          
-          if (data.success) {
-            console.log('Valid session found:', data);
-            setIsAuthenticated(true);
-            setAccessToken(storedToken);
-            setIsAdmin(data.isAdmin);
-            setUserData(data.userData);
-            setCurrentClient(data.isAdmin ? 'Octopus Data & Privacy' : (data.userData?.name || 'Client'));
-            setCurrentPage(data.isAdmin ? 'admin' : 'dashboard');
-          } else {
-            console.log('Invalid session, removing token');
-            localStorage.removeItem('accessToken');
-          }
-        } catch (error) {
-          console.error('Session check error:', error);
-          localStorage.removeItem('accessToken');
-        }
-      }
-      setIsInitializing(false);
-    };
-
-    checkSession();
+    setIsInitializing(false);
   }, []);
 
-  const handleLogin = (clientName: string, token: string, admin: boolean, user: any) => {
+  const handleLogin = (user: any, token: string) => {
     setIsAuthenticated(true);
-    setCurrentClient(clientName);
-    setAccessToken(token);
-    setIsAdmin(admin);
     setUserData(user);
-    
-    // Check if user must change password
-    if (!admin && user && user.mustChangePassword) {
-      setCurrentPage('changePassword');
-    } else {
-      setCurrentPage(admin ? 'admin' : 'dashboard');
-    }
-    
-    localStorage.setItem('accessToken', token);
+    localStorage.setItem('authToken', token);
+    localStorage.setItem('userData', JSON.stringify(user));
+    setCurrentPage(user.role === 'super_admin' ? 'admin' : 'dashboard');
   };
 
   const handleLogout = () => {
     setIsAuthenticated(false);
-    setCurrentClient('');
-    setAccessToken('');
-    setIsAdmin(false);
     setUserData(null);
-    setCurrentPage('home');
-    localStorage.removeItem('accessToken');
-  };
-
-  const handleSetupComplete = () => {
-    setNeedsSetup(false);
+    localStorage.removeItem('authToken');
+    localStorage.removeItem('userData');
     setCurrentPage('login');
   };
 
@@ -137,43 +61,25 @@ export default function App() {
   return (
     <div className="min-h-screen bg-gray-50">
       <Toaster position="top-right" />
-      {currentPage === 'setup' && (
-        <SetupWizard onComplete={handleSetupComplete} />
-      )}
-      {currentPage === 'home' && (
-        <HomePage 
-          onLoginClick={() => setCurrentPage('login')}
-          onSchemaClick={() => setCurrentPage('schema')}
-        />
-      )}
+
       {currentPage === 'login' && (
-        <LoginPage 
-          onLogin={handleLogin}
-          onBack={() => setCurrentPage('home')}
-        />
+        <LoginPage onLogin={handleLogin} />
       )}
-      {currentPage === 'admin' && isAuthenticated && isAdmin && (
-        <AdminDashboardNew 
-          onLogout={handleLogout}
-          accessToken={accessToken}
-        />
-      )}
-      {currentPage === 'dashboard' && isAuthenticated && !isAdmin && (
-        <ClientDashboard 
-          clientName={currentClient}
+
+      {currentPage === 'admin' && isAuthenticated && userData?.role === 'super_admin' && (
+        <AdminDashboard
           onLogout={handleLogout}
           userData={userData}
-          accessToken={accessToken}
         />
       )}
-      {currentPage === 'changePassword' && (
-        <PasswordChangeRequired 
-          accessToken={accessToken}
-          onPasswordChanged={() => setCurrentPage('dashboard')}
+
+      {currentPage === 'dashboard' && isAuthenticated && userData?.role !== 'super_admin' && (
+        <ClientDashboard
+          clientName={userData?.client_name || ''}
+          onLogout={handleLogout}
+          userData={userData}
+          accessToken={localStorage.getItem('authToken') || ''}
         />
-      )}
-      {currentPage === 'schema' && (
-        <FunctionalSchema onBackHome={() => setCurrentPage('home')} />
       )}
     </div>
   );

@@ -28,7 +28,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
       const { data: users, error: fetchError } = await supabase
         .from('users')
         .select('*')
-        .eq('email', email)
+        .eq('email', email.toLowerCase().trim())
         .eq('is_active', true)
         .limit(1);
 
@@ -51,24 +51,17 @@ export function LoginPage({ onLogin }: LoginPageProps) {
         return;
       }
 
-      // 3. Créer un token simple
-      const token = btoa(JSON.stringify({ 
-        userId: userData.id, 
+      // 3. Créer un token simple Base64
+      const token = btoa(JSON.stringify({
+        userId: userData.id,
         email: userData.email,
-        timestamp: Date.now() 
+        timestamp: Date.now(),
       }));
 
-      // 4. Stocker dans localStorage
-      localStorage.setItem('authToken', token);
-      localStorage.setItem('userData', JSON.stringify(userData));
+      // 4. Appeler onLogin avec le nouveau contrat (userData, token)
+      // App.tsx gère le stockage localStorage et le routing
+      onLogin(userData, token);
 
-      // 5. Appeler onLogin avec les bons paramètres
-      onLogin(
-        userData.client_name,
-        token,
-        userData.role === 'super_admin',
-        userData
-      );
     } catch (err: any) {
       console.error('Login error:', err);
       setError('Erreur de connexion. Veuillez réessayer.');
@@ -87,7 +80,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
           </div>
           <CardTitle className="text-2xl text-center">Connexion</CardTitle>
           <CardDescription className="text-center">
-            Octopus Privacy - Plateforme RGPD
+            Octopus Privacy — Plateforme RGPD
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -98,11 +91,11 @@ export function LoginPage({ onLogin }: LoginPageProps) {
                 <AlertDescription>{error}</AlertDescription>
               </Alert>
             )}
-            
+
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <div className="relative">
-                <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
                 <Input
                   id="email"
                   type="email"
@@ -118,7 +111,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
             <div className="space-y-2">
               <Label htmlFor="password">Mot de passe</Label>
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
                 <Input
                   id="password"
                   type="password"
@@ -131,11 +124,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
               </div>
             </div>
 
-            <Button 
-              type="submit" 
-              className="w-full"
-              disabled={loading}
-            >
+            <Button type="submit" className="w-full" disabled={loading}>
               {loading ? 'Connexion...' : 'Se connecter'}
             </Button>
           </form>
