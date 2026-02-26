@@ -416,7 +416,6 @@ useEffect(() => {
             {activeTab === 'phishing' && (
               <PhishingDashboard 
                 userData={userData} 
-                accessToken={accessToken}
                 entityId={selectedEntityId}
               />
             )}
