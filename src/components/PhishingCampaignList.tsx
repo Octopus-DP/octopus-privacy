@@ -40,14 +40,27 @@ export function PhishingCampaignList({ userData, entityId }: PhishingCampaignLis
   };
 
   const handleLaunchCampaign = async (campaignId: string) => {
-    if (!confirm('Êtes-vous sûr de vouloir lancer cette campagne ?')) return;
+    if (!confirm('Êtes-vous sûr de vouloir lancer cette campagne ? Les emails seront envoyés immédiatement.')) return;
     try {
-      const { error } = await supabase
-        .from('phishing_campaigns')
-        .update({ status: 'running', launched_at: new Date().toISOString(), launched_by: userData.email })
-        .eq('id', campaignId);
-      if (error) throw error;
-      toast.success('Campagne lancée avec succès !');
+      toast('Envoi des emails en cours...', { duration: 3000 });
+
+      const { data: { session } } = await supabase.auth.getSession();
+      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-phishing`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${anonKey}`,
+        },
+        body: JSON.stringify({ campaignId }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) throw new Error(data.error || 'Erreur inconnue');
+
+      toast.success(`Campagne lancée ! ${data.sent} email(s) envoyé(s), ${data.errors} erreur(s)`);
       loadCampaigns();
     } catch (error: any) {
       toast.error('Erreur lors du lancement : ' + error.message);
