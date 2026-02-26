@@ -1,18 +1,15 @@
 import { useState, useEffect, useRef } from 'react';
-import { Shield, LogOut, FileText, Users, AlertTriangle, Menu, X, Building2, ChevronDown, User, KeyRound, UserCog, Fish } from 'lucide-react';
-import { Button } from './ui/button';
+import { LogOut, FileText, Users, AlertTriangle, Menu, X, Building2, ChevronDown, User, UserCog, Fish } from 'lucide-react';
 import { RegistreTraitements } from './RegistreTraitements';
 import { ExerciceDroits } from './ExerciceDroits';
 import { ViolationsDonnees } from './ViolationsDonnees';
 import { UserProfile } from './UserProfile';
 import { ClientUserManagement } from './ClientUserManagement';
 import { PhishingDashboard } from './PhishingDashboard';
-import { projectId } from '../utils/supabase/info';
 import { supabase } from '../lib/supabase';
-import logoImage from 'figma:asset/8b41da225a8555c958a767da49b2bb7bdc17e6a6.png';
 
 interface ClientDashboardProps {
-  clientName: string;
+  clientName?: string;
   onLogout: () => void;
   userData?: any;
   accessToken?: string;
@@ -20,7 +17,7 @@ interface ClientDashboardProps {
 
 type Tab = 'registre' | 'droits' | 'violations' | 'profile' | 'users' | 'phishing';
 
-export function ClientDashboard({ clientName, onLogout, userData, accessToken }: ClientDashboardProps) {
+export function ClientDashboard({ onLogout, userData, accessToken }: ClientDashboardProps) {
   const [legalEntities, setLegalEntities] = useState<any[]>([]);
   const [selectedEntityId, setSelectedEntityId] = useState<string>('');
   const [showEntityDropdown, setShowEntityDropdown] = useState(false);
@@ -29,16 +26,12 @@ export function ClientDashboard({ clientName, onLogout, userData, accessToken }:
   const dropdownRef = useRef<HTMLDivElement>(null);
   const accountMenuRef = useRef<HTMLDivElement>(null);
 
-  // Debug: Log userData to console
   useEffect(() => {
     console.log('ClientDashboard userData:', userData);
     console.log('User role:', userData?.role);
     console.log('Is client_admin?', userData?.role === 'client_admin');
   }, [userData]);
 
-  const apiUrl = `https://${projectId}.supabase.co/functions/v1/make-server-abb8d15d`;
-
-  // Build tabs based on user permissions
   const allTabs = [
     { id: 'registre' as Tab, label: 'Registre des Traitements', icon: FileText, permission: 'registre' },
     { id: 'droits' as Tab, label: 'Exercices de Droits', icon: Users, permission: 'droits' },
@@ -48,21 +41,12 @@ export function ClientDashboard({ clientName, onLogout, userData, accessToken }:
     { id: 'users' as Tab, label: 'Gestion des Utilisateurs', icon: UserCog, permission: 'users' },
   ];
 
-  // Filter tabs based on user permissions
   const tabs = allTabs.filter(tab => {
-    // Profile tab should not appear in main navigation
-    if (tab.id === 'profile') {
-      return false;
-    }
-    // If no userData or no permissions defined, show all tabs (backward compatibility)
-    if (!userData || !userData.permissions) {
-      return true;
-    }
-    // Check if user has permission for this tab
+    if (tab.id === 'profile') return false;
+    if (!userData || !userData.permissions) return true;
     return userData.permissions[tab.permission] === true;
   });
 
-  // Set default active tab to the first available tab
   const getDefaultTab = (): Tab => {
     return tabs.length > 0 ? tabs[0].id : 'registre';
   };
@@ -70,54 +54,49 @@ export function ClientDashboard({ clientName, onLogout, userData, accessToken }:
   const [activeTab, setActiveTab] = useState<Tab>(getDefaultTab());
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-// Load user's legal entities
-useEffect(() => {
-  const fetchLegalEntities = async () => {
-    console.log('userData:', userData);
-    console.log('legal_entity_ids:', userData?.legal_entity_ids);
-    try {
-      setLoadingEntities(true);
+  useEffect(() => {
+    const fetchLegalEntities = async () => {
+      console.log('userData:', userData);
+      console.log('legal_entity_ids:', userData?.legal_entity_ids);
+      try {
+        setLoadingEntities(true);
+        const entityIds = userData?.legal_entity_ids || [];
 
-      // Récupérer les entités juridiques de l'utilisateur
-      const entityIds = userData?.legal_entity_ids || [];
+        if (entityIds.length === 0) {
+          console.log('User has no legal entities assigned');
+          setLegalEntities([]);
+          setLoadingEntities(false);
+          return;
+        }
 
-      if (entityIds.length === 0) {
-        console.log('User has no legal entities assigned');
-        setLegalEntities([]);
-        setLoadingEntities(false);
-        return;
-      }
+        const { data, error } = await supabase
+          .from('legal_entities')
+          .select('*')
+          .in('id', entityIds);
 
-      // Charger les entités depuis PostgreSQL
-      const { data, error } = await supabase
-        .from('legal_entities')
-        .select('*')
-        .in('id', entityIds);
+        if (error) {
+          console.error('Error fetching legal entities:', error);
+          throw error;
+        }
 
-      if (error) {
+        console.log('Legal entities loaded:', data);
+
+        if (data && data.length > 0) {
+          setLegalEntities(data);
+          setSelectedEntityId(data[0].id);
+        } else {
+          setLegalEntities([]);
+        }
+      } catch (error) {
         console.error('Error fetching legal entities:', error);
-        throw error;
+      } finally {
+        setLoadingEntities(false);
       }
+    };
 
-      console.log('Legal entities loaded:', data);
-      
-      if (data && data.length > 0) {
-        setLegalEntities(data);
-        setSelectedEntityId(data[0].id);
-      } else {
-        setLegalEntities([]);
-      }
-    } catch (error) {
-      console.error('Error fetching legal entities:', error);
-    } finally {
-      setLoadingEntities(false);
-    }
-  };
+    fetchLegalEntities();
+  }, [userData]);
 
-  fetchLegalEntities();
-}, [userData]);
-
-  // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -141,9 +120,9 @@ useEffect(() => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center gap-3">
-              <img src={logoImage} alt="Octopus Logo" className="h-10" />
+              <span className="text-xl font-bold text-blue-600">Octopus Privacy</span>
             </div>
-            
+
             <div className="flex items-center gap-3">
               {/* Entity Selector */}
               {!loadingEntities && legalEntities.length > 0 && (
@@ -159,7 +138,6 @@ useEffect(() => {
                     <ChevronDown className={`h-4 w-4 text-gray-600 transition-transform ${showEntityDropdown ? 'rotate-180' : ''}`} />
                   </button>
 
-                  {/* Dropdown Menu */}
                   {showEntityDropdown && (
                     <div className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-50">
                       <div className="px-3 py-2 border-b border-gray-100">
@@ -209,49 +187,30 @@ useEffect(() => {
                   <ChevronDown className={`h-4 w-4 text-gray-600 transition-transform ${showAccountMenu ? 'rotate-180' : ''}`} />
                 </button>
 
-                {/* Dropdown Menu */}
                 {showAccountMenu && (
                   <div className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-50">
                     <div className="px-3 py-2 border-b border-gray-100">
                       <p className="text-xs text-gray-500 uppercase tracking-wide">Compte</p>
                     </div>
                     <button
-                      onClick={() => {
-                        setActiveTab('profile');
-                        setShowAccountMenu(false);
-                      }}
-                      className={`w-full flex items-start gap-3 px-3 py-2 hover:bg-gray-50 transition-colors ${
-                        activeTab === 'profile' ? 'bg-blue-50' : ''
-                      }`}
+                      onClick={() => { setActiveTab('profile'); setShowAccountMenu(false); }}
+                      className={`w-full flex items-start gap-3 px-3 py-2 hover:bg-gray-50 transition-colors ${activeTab === 'profile' ? 'bg-blue-50' : ''}`}
                     >
-                      <User className={`h-4 w-4 mt-0.5 flex-shrink-0 ${
-                        activeTab === 'profile' ? 'text-blue-600' : 'text-gray-400'
-                      }`} />
+                      <User className={`h-4 w-4 mt-0.5 flex-shrink-0 ${activeTab === 'profile' ? 'text-blue-600' : 'text-gray-400'}`} />
                       <div className="flex-1 text-left">
-                        <p className={`text-sm ${
-                          activeTab === 'profile' ? 'text-blue-600 font-medium' : 'text-gray-900'
-                        }`}>
+                        <p className={`text-sm ${activeTab === 'profile' ? 'text-blue-600 font-medium' : 'text-gray-900'}`}>
                           Mon Profil
                         </p>
                       </div>
                     </button>
                     {userData?.role === 'client_admin' && (
                       <button
-                        onClick={() => {
-                          setActiveTab('users');
-                          setShowAccountMenu(false);
-                        }}
-                        className={`w-full flex items-start gap-3 px-3 py-2 hover:bg-gray-50 transition-colors ${
-                          activeTab === 'users' ? 'bg-blue-50' : ''
-                        }`}
+                        onClick={() => { setActiveTab('users'); setShowAccountMenu(false); }}
+                        className={`w-full flex items-start gap-3 px-3 py-2 hover:bg-gray-50 transition-colors ${activeTab === 'users' ? 'bg-blue-50' : ''}`}
                       >
-                        <UserCog className={`h-4 w-4 mt-0.5 flex-shrink-0 ${
-                          activeTab === 'users' ? 'text-blue-600' : 'text-gray-400'
-                        }`} />
+                        <UserCog className={`h-4 w-4 mt-0.5 flex-shrink-0 ${activeTab === 'users' ? 'text-blue-600' : 'text-gray-400'}`} />
                         <div className="flex-1 text-left">
-                          <p className={`text-sm ${
-                            activeTab === 'users' ? 'text-blue-600 font-medium' : 'text-gray-900'
-                          }`}>
+                          <p className={`text-sm ${activeTab === 'users' ? 'text-blue-600 font-medium' : 'text-gray-900'}`}>
                             Mes Utilisateurs
                           </p>
                         </div>
@@ -263,9 +222,7 @@ useEffect(() => {
                     >
                       <LogOut className="h-4 w-4 mt-0.5 flex-shrink-0 text-gray-400" />
                       <div className="flex-1 text-left">
-                        <p className="text-sm text-gray-900">
-                          Déconnexion
-                        </p>
+                        <p className="text-sm text-gray-900">Déconnexion</p>
                       </div>
                     </button>
                   </div>
@@ -318,9 +275,7 @@ useEffect(() => {
                       const Icon = tabs.find(t => t.id === activeTab)!.icon;
                       return <Icon className="h-5 w-5 text-blue-600" />;
                     })()}
-                    <span className="text-gray-900">
-                      {tabs.find(t => t.id === activeTab)?.label}
-                    </span>
+                    <span className="text-gray-900">{tabs.find(t => t.id === activeTab)?.label}</span>
                   </>
                 ) : null}
               </div>
@@ -334,14 +289,9 @@ useEffect(() => {
                   return (
                     <button
                       key={tab.id}
-                      onClick={() => {
-                        setActiveTab(tab.id);
-                        setMobileMenuOpen(false);
-                      }}
+                      onClick={() => { setActiveTab(tab.id); setMobileMenuOpen(false); }}
                       className={`flex items-center gap-2 w-full px-4 py-3 rounded-lg ${
-                        activeTab === tab.id
-                          ? 'bg-blue-50 text-blue-600'
-                          : 'text-gray-600 hover:bg-gray-50'
+                        activeTab === tab.id ? 'bg-blue-50 text-blue-600' : 'text-gray-600 hover:bg-gray-50'
                       }`}
                     >
                       <Icon className="h-5 w-5" />
@@ -380,42 +330,42 @@ useEffect(() => {
         ) : (
           <>
             {activeTab === 'registre' && (
-              <RegistreTraitements 
-                userData={userData} 
-                accessToken={accessToken} 
+              <RegistreTraitements
+                userData={userData}
+                accessToken={accessToken}
                 entityId={selectedEntityId}
               />
             )}
             {activeTab === 'droits' && (
-              <ExerciceDroits 
-                userData={userData} 
+              <ExerciceDroits
+                userData={userData}
                 accessToken={accessToken}
                 entityId={selectedEntityId}
               />
             )}
             {activeTab === 'violations' && (
-              <ViolationsDonnees 
-                userData={userData} 
+              <ViolationsDonnees
+                userData={userData}
                 accessToken={accessToken}
                 entityId={selectedEntityId}
               />
             )}
             {activeTab === 'profile' && (
-              <UserProfile 
-                userData={userData} 
+              <UserProfile
+                userData={userData}
                 accessToken={accessToken}
               />
             )}
             {activeTab === 'users' && (
-              <ClientUserManagement 
-                userData={userData} 
+              <ClientUserManagement
+                userData={userData}
                 accessToken={accessToken}
                 legalEntities={legalEntities}
               />
             )}
             {activeTab === 'phishing' && (
-              <PhishingDashboard 
-                userData={userData} 
+              <PhishingDashboard
+                userData={userData}
                 entityId={selectedEntityId}
               />
             )}

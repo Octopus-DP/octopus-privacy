@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, Eye, Play, Pause, Trash2, AlertCircle, TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import { Plus, Eye, Play, Pause, Trash2, AlertCircle } from 'lucide-react';
 import { Button } from './ui/button';
 import { PhishingCampaignWizard } from './PhishingCampaignWizard';
 import { PhishingCampaignDetail } from './PhishingCampaignDetail';
@@ -44,10 +44,10 @@ export function PhishingCampaignList({ userData, entityId }: PhishingCampaignLis
     try {
       toast('Envoi des emails en cours...', { duration: 3000 });
 
-      const { data: { session } } = await supabase.auth.getSession();
-      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      const anonKey = (import.meta as any).env.VITE_SUPABASE_ANON_KEY;
+      const supabaseUrl = (import.meta as any).env.VITE_SUPABASE_URL;
 
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-phishing`, {
+      const response = await fetch(`${supabaseUrl}/functions/v1/send-phishing`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

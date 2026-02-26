@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Users, CheckCircle, Clock, AlertCircle, Calendar, Mail, Plus, Edit, History, Search, X } from 'lucide-react';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
+import { Card, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { DemandeFormModal } from './DemandeFormModal';
 import { HistoryModal } from './HistoryModal';
 import { supabase } from '../lib/supabase';
@@ -13,7 +13,7 @@ import { registreHelp } from '../utils/fieldHelp';
 
 interface ExerciceDroitsProps {
   userData: any;
-  accessToken: string;
+  accessToken?: string;
   entityId?: string;
 }
 

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { AlertTriangle, AlertCircle, CheckCircle, Clock, Calendar, Shield, FileText, Plus, Edit, History, Search, X } from 'lucide-react';
+import { AlertTriangle, CheckCircle, Clock, Calendar, Shield, Plus, Edit, History, Search, X } from 'lucide-react';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
@@ -14,7 +14,7 @@ import { registreHelp } from '../utils/fieldHelp';
 
 interface ViolationsDonneesProps {
   userData: any;
-  accessToken: string;
+  accessToken?: string;
   entityId?: string;
 }
 
@@ -25,13 +25,13 @@ const graviteCouleurs = {
   'Faible': 'bg-green-100 text-green-700 border-green-300',
 };
 
-const statutCouleurs = {
+const statutCouleurs: Record<string, 'default' | 'secondary' | 'destructive'> = {
   'Résolue': 'secondary',
   'En cours': 'default',
   'Nouvelle': 'destructive',
 };
 
-export function ViolationsDonnees({ userData, accessToken, entityId }: ViolationsDonneesProps) {
+export function ViolationsDonnees({ userData, entityId }: ViolationsDonneesProps) {
   const [violations, setViolations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -44,50 +44,35 @@ export function ViolationsDonnees({ userData, accessToken, entityId }: Violation
     loadViolations();
   }, [entityId]);
 
-  // Mapping gravité français → SQL anglais
   const mapGraviteToSQL = (gravite: string): string => {
     const mapping: Record<string, string> = {
-      'Critique': 'critical',
-      'Élevée': 'high',
-      'Moyenne': 'medium',
-      'Faible': 'low'
+      'Critique': 'critical', 'Élevée': 'high', 'Moyenne': 'medium', 'Faible': 'low'
     };
     return mapping[gravite] || 'medium';
   };
 
-  // Mapping statut français → SQL anglais
   const mapStatutToSQL = (statut: string): string => {
     const mapping: Record<string, string> = {
-      'Nouvelle': 'open',
-      'En cours': 'investigating',
-      'Résolue': 'resolved'
+      'Nouvelle': 'open', 'En cours': 'investigating', 'Résolue': 'resolved'
     };
     return mapping[statut] || 'open';
   };
 
-  // Mapping inverse pour affichage
   const mapSQLToGravite = (severity: string): string => {
     const mapping: Record<string, string> = {
-      'critical': 'Critique',
-      'high': 'Élevée',
-      'medium': 'Moyenne',
-      'low': 'Faible'
+      'critical': 'Critique', 'high': 'Élevée', 'medium': 'Moyenne', 'low': 'Faible'
     };
     return mapping[severity] || severity;
   };
 
   const mapSQLToStatut = (status: string): string => {
     const mapping: Record<string, string> = {
-      'open': 'Nouvelle',
-      'investigating': 'En cours',
-      'mitigated': 'En cours',
-      'resolved': 'Résolue',
-      'closed': 'Résolue'
+      'open': 'Nouvelle', 'investigating': 'En cours',
+      'mitigated': 'En cours', 'resolved': 'Résolue', 'closed': 'Résolue'
     };
     return mapping[status] || status;
   };
 
-  // Fonction pour mapper les champs du formulaire vers les colonnes SQL
   const mapViolationFormToSQL = (formData: any) => {
     return {
       title: formData.titre || formData.title,
@@ -116,21 +101,13 @@ export function ViolationsDonnees({ userData, accessToken, entityId }: Violation
   const loadViolations = async () => {
     try {
       setLoading(true);
-      
-      // Requête SQL avec Supabase
+
       let query = supabase
         .from('violations')
-        .select(`
-          *,
-          legal_entities (
-            id,
-            name
-          )
-        `)
-        .eq('client_code', 'OCTOPUS')
+        .select(`*, legal_entities (id, name)`)
+        .eq('client_id', userData.client_id)
         .order('created_at', { ascending: false });
 
-      // Filtrer par entité si fourni
       if (entityId) {
         query = query.eq('entity_id', entityId);
       }
@@ -143,7 +120,6 @@ export function ViolationsDonnees({ userData, accessToken, entityId }: Violation
         return;
       }
 
-      // Mapper les données SQL vers le format d'affichage français
       const mappedData = (data || []).map(v => ({
         ...v,
         titre: v.title,
@@ -163,10 +139,8 @@ export function ViolationsDonnees({ userData, accessToken, entityId }: Violation
 
   const handleSave = async (formData: any) => {
     try {
-      // Générer un ID simple si création
       const newId = editingViolation ? editingViolation.id : `violation_${Date.now()}`;
-      
-      // Préparer les données
+
       const dataToSave = {
         id: newId,
         ...mapViolationFormToSQL(formData),
@@ -177,30 +151,13 @@ export function ViolationsDonnees({ userData, accessToken, entityId }: Violation
         updated_by: userData?.email || 'system',
       };
 
-      let result;
-
       if (editingViolation) {
-        // UPDATE
-        const { data, error } = await supabase
-          .from('violations')
-          .update(dataToSave)
-          .eq('id', editingViolation.id)
-          .select()
-          .single();
-
+        const { error } = await supabase.from('violations').update(dataToSave).eq('id', editingViolation.id);
         if (error) throw error;
-        result = data;
         toast.success('Violation modifiée avec succès');
       } else {
-        // INSERT
-        const { data, error } = await supabase
-          .from('violations')
-          .insert([dataToSave])
-          .select()
-          .single();
-
+        const { error } = await supabase.from('violations').insert([dataToSave]);
         if (error) throw error;
-        result = data;
         toast.success('Violation créée avec succès');
       }
 
@@ -235,8 +192,6 @@ export function ViolationsDonnees({ userData, accessToken, entityId }: Violation
   const nouvelles = violations.filter(v => v.statut === 'Nouvelle').length;
   const enCours = violations.filter(v => v.statut === 'En cours').length;
   const resolues = violations.filter(v => v.statut === 'Résolue').length;
-
-  // Filtrer les violations selon le terme de recherche
   const filteredViolations = filterBySearch(violations, searchTerm);
 
   return (
@@ -247,9 +202,7 @@ export function ViolationsDonnees({ userData, accessToken, entityId }: Violation
             <h1 className="text-gray-900">Registre des Violations</h1>
             <FieldHelp fieldKey="registreViolations" helpContent={registreHelp.violations} />
           </div>
-          <p className="text-gray-600">
-            Suivi des violations de données personnelles (Article 33 RGPD)
-          </p>
+          <p className="text-gray-600">Suivi des violations de données personnelles (Article 33 RGPD)</p>
         </div>
         <Button onClick={() => { setEditingViolation(null); setShowForm(true); }}>
           <Plus className="h-4 w-4 mr-2" />
@@ -261,8 +214,7 @@ export function ViolationsDonnees({ userData, accessToken, entityId }: Violation
         <Card>
           <CardHeader className="pb-3">
             <CardDescription className="flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4" />
-              Nouvelles
+              <AlertTriangle className="h-4 w-4" /> Nouvelles
             </CardDescription>
             <CardTitle className="text-3xl text-red-600">{nouvelles}</CardTitle>
           </CardHeader>
@@ -270,8 +222,7 @@ export function ViolationsDonnees({ userData, accessToken, entityId }: Violation
         <Card>
           <CardHeader className="pb-3">
             <CardDescription className="flex items-center gap-2">
-              <Clock className="h-4 w-4" />
-              En cours
+              <Clock className="h-4 w-4" /> En cours
             </CardDescription>
             <CardTitle className="text-3xl text-orange-600">{enCours}</CardTitle>
           </CardHeader>
@@ -279,8 +230,7 @@ export function ViolationsDonnees({ userData, accessToken, entityId }: Violation
         <Card>
           <CardHeader className="pb-3">
             <CardDescription className="flex items-center gap-2">
-              <CheckCircle className="h-4 w-4" />
-              Résolues
+              <CheckCircle className="h-4 w-4" /> Résolues
             </CardDescription>
             <CardTitle className="text-3xl text-green-600">{resolues}</CardTitle>
           </CardHeader>
@@ -292,13 +242,12 @@ export function ViolationsDonnees({ userData, accessToken, entityId }: Violation
         <AlertDescription>
           <span className="font-semibold">Délai légal : 72 heures</span>
           <p className="text-sm mt-1">
-            Vous devez notifier la CNIL dans les 72 heures suivant la prise de connaissance d'une violation 
+            Vous devez notifier la CNIL dans les 72 heures suivant la prise de connaissance d'une violation
             (sauf si la violation ne présente pas de risque pour les droits et libertés des personnes).
           </p>
         </AlertDescription>
       </Alert>
 
-      {/* Search Bar */}
       {violations.length > 0 && (
         <div className="relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
@@ -330,9 +279,7 @@ export function ViolationsDonnees({ userData, accessToken, entityId }: Violation
                   {searchTerm ? 'Aucune violation trouvée' : 'Aucune violation enregistrée'}
                 </p>
                 {!searchTerm && (
-                  <p className="text-sm">
-                    Bonne nouvelle ! Aucune violation de données n'a été déclarée.
-                  </p>
+                  <p className="text-sm">Bonne nouvelle ! Aucune violation de données n'a été déclarée.</p>
                 )}
               </div>
             </CardContent>
@@ -353,7 +300,7 @@ export function ViolationsDonnees({ userData, accessToken, entityId }: Violation
                         <span className={`inline-flex px-2.5 py-1 text-xs rounded-full border ${graviteCouleurs[violation.gravite as keyof typeof graviteCouleurs]}`}>
                           {violation.gravite}
                         </span>
-                        <Badge variant={statutCouleurs[violation.statut as keyof typeof statutCouleurs] as any}>
+                        <Badge variant={statutCouleurs[violation.statut]}>
                           {violation.statut}
                         </Badge>
                       </div>
@@ -383,18 +330,10 @@ export function ViolationsDonnees({ userData, accessToken, entityId }: Violation
                     </div>
 
                     <div className="flex items-center gap-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleViewHistory(violation)}
-                      >
+                      <Button variant="ghost" size="sm" onClick={() => handleViewHistory(violation)}>
                         <History className="h-4 w-4" />
                       </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleEdit(violation)}
-                      >
+                      <Button variant="ghost" size="sm" onClick={() => handleEdit(violation)}>
                         <Edit className="h-4 w-4" />
                       </Button>
                     </div>
@@ -409,22 +348,16 @@ export function ViolationsDonnees({ userData, accessToken, entityId }: Violation
       {showForm && (
         <ViolationFormModal
           violation={editingViolation}
-          onClose={() => {
-            setShowForm(false);
-            setEditingViolation(null);
-          }}
+          onClose={() => { setShowForm(false); setEditingViolation(null); }}
           onSave={handleSave}
         />
       )}
 
       {showHistory && historyItem && (
         <HistoryModal
+          module="violation"
           item={historyItem}
-          module="violations"
-          onClose={() => {
-            setShowHistory(false);
-            setHistoryItem(null);
-          }}
+          onClose={() => { setShowHistory(false); setHistoryItem(null); }}
         />
       )}
     </div>

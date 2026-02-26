@@ -6,11 +6,11 @@ import { toast } from 'sonner';
 
 interface PhishingCampaignDetailProps {
   campaignId: string;
-  userData: any;
+  userData?: any;
   onClose: () => void;
 }
 
-export function PhishingCampaignDetail({ campaignId, userData, onClose }: PhishingCampaignDetailProps) {
+export function PhishingCampaignDetail({ campaignId, onClose }: PhishingCampaignDetailProps) {
   const [campaign, setCampaign] = useState<any>(null);
   const [recipients, setRecipients] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -62,7 +62,6 @@ export function PhishingCampaignDetail({ campaignId, userData, onClose }: Phishi
   const totalRecipients = recipients.length;
   const opened = recipients.filter(r => r.opened).length;
   const clicked = recipients.filter(r => r.clicked).length;
-  const submitted = recipients.filter(r => r.submitted).length;
   const reported = recipients.filter(r => r.reported).length;
   const noAction = recipients.filter(r => !r.opened && !r.clicked && !r.reported).length;
 

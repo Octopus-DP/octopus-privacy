@@ -1,11 +1,10 @@
 import { useState, useEffect } from 'react';
-import { FileText, Download, Eye, Calendar, Shield, Database, Plus, Edit, History, Search, X } from 'lucide-react';
+import { Download, Database, Plus, Edit, History, Search, X, Shield, Calendar } from 'lucide-react';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { TraitementFormModal } from './TraitementFormModal';
 import { HistoryModal } from './HistoryModal';
-import { projectId, publicAnonKey } from '../utils/supabase/info';
 import { filterBySearch } from '../utils/search';
 import { FieldHelp } from './FieldHelp';
 import { registreHelp } from '../utils/fieldHelp';
@@ -14,11 +13,11 @@ import { toast } from 'sonner';
 
 interface RegistreTraitementsProps {
   userData: any;
-  accessToken: string;
+  accessToken?: string;
   entityId?: string;
 }
 
-export function RegistreTraitements({ userData, accessToken, entityId }: RegistreTraitementsProps) {
+export function RegistreTraitements({ userData, entityId }: RegistreTraitementsProps) {
   const [traitements, setTraitements] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -27,8 +26,6 @@ export function RegistreTraitements({ userData, accessToken, entityId }: Registr
   const [historyItem, setHistoryItem] = useState<any>(null);
   const [searchTerm, setSearchTerm] = useState('');
 
-  const apiUrl = `https://${projectId}.supabase.co/functions/v1/make-server-abb8d15d`;
-
   useEffect(() => {
     loadTraitements();
   }, [entityId]);
@@ -36,11 +33,7 @@ export function RegistreTraitements({ userData, accessToken, entityId }: Registr
   const loadTraitements = async () => {
     try {
       setLoading(true);
-      
-      const clientCode = userData?.clientCode || 'OCTOPUS';
-      console.log('userData:', userData);
-      console.log('clientCode:', clientCode);
-      // Nouvelle requête SQL avec Supabase
+
       let query = supabase
         .from('traitements')
         .select(`
@@ -51,10 +44,9 @@ export function RegistreTraitements({ userData, accessToken, entityId }: Registr
             siren
           )
         `)
-        .eq('client_code', userData.clientCode || 'OCTOPUS')
+        .eq('client_id', userData.client_id)
         .order('created_at', { ascending: false });
 
-      // Filtrer par entité si fourni
       if (entityId) {
         query = query.eq('entity_id', entityId);
       }
@@ -76,19 +68,16 @@ export function RegistreTraitements({ userData, accessToken, entityId }: Registr
     }
   };
 
-  // Fonction pour mapper les champs du formulaire vers les colonnes SQL
   const mapFormDataToSQL = (formData: any) => {
-    // Helper pour convertir les tableaux
     const toArray = (value: any): string[] => {
       if (!value) return [];
       if (Array.isArray(value)) return value;
       if (typeof value === 'string') {
-        // Si c'est une string, essayer de la parser ou la splitter
         try {
           const parsed = JSON.parse(value);
           return Array.isArray(parsed) ? parsed : [value];
         } catch {
-          return value.split(',').map(s => s.trim()).filter(Boolean);
+          return value.split(',').map((s: string) => s.trim()).filter(Boolean);
         }
       }
       return [String(value)];
@@ -118,13 +107,11 @@ export function RegistreTraitements({ userData, accessToken, entityId }: Registr
 
   const handleSave = async (formData: any) => {
     try {
-      // Générer un ID simple si création
       const newId = editingTraitement ? editingTraitement.id : `traitement_${Date.now()}`;
-      
-      // Préparer les données
+
       const dataToSave = {
         id: newId,
-        ...mapFormDataToSQL(formData),  // ← Utiliser la fonction de mapping
+        ...mapFormDataToSQL(formData),
         entity_id: userData?.legal_entity_ids?.[0] || null,
         client_id: userData.client_id,
         client_code: userData.client_code,
@@ -132,30 +119,18 @@ export function RegistreTraitements({ userData, accessToken, entityId }: Registr
         updated_by: userData.email,
       };
 
-      let result;
-
       if (editingTraitement) {
-        // UPDATE
-        const { data, error } = await supabase
+        const { error } = await supabase
           .from('traitements')
           .update(dataToSave)
-          .eq('id', editingTraitement.id)
-          .select()
-          .single();
-
+          .eq('id', editingTraitement.id);
         if (error) throw error;
-        result = data;
         toast.success('Traitement modifié avec succès');
       } else {
-        // INSERT
-        const { data, error } = await supabase
+        const { error } = await supabase
           .from('traitements')
-          .insert([dataToSave])
-          .select()
-          .single();
-
+          .insert([dataToSave]);
         if (error) throw error;
-        result = data;
         toast.success('Traitement créé avec succès');
       }
 
@@ -187,7 +162,6 @@ export function RegistreTraitements({ userData, accessToken, entityId }: Registr
     );
   }
 
-  // Filtrer les traitements selon le terme de recherche
   const filteredTraitements = filterBySearch(traitements, searchTerm);
 
   return (
@@ -225,17 +199,17 @@ export function RegistreTraitements({ userData, accessToken, entityId }: Registr
         </Card>
         <Card>
           <CardHeader className="pb-3">
-            <CardDescription>À jour</CardDescription>
+            <CardDescription>Actifs</CardDescription>
             <CardTitle className="text-3xl text-green-600">
-              {traitements.filter(t => t.statut === 'À jour').length}
+              {traitements.filter(t => t.status === 'active').length}
             </CardTitle>
           </CardHeader>
         </Card>
         <Card>
           <CardHeader className="pb-3">
-            <CardDescription>À réviser</CardDescription>
+            <CardDescription>PIA requise</CardDescription>
             <CardTitle className="text-3xl text-orange-600">
-              {traitements.filter(t => t.statut === 'Révision nécessaire').length}
+              {traitements.filter(t => t.pia_required && !t.pia_completed).length}
             </CardTitle>
           </CardHeader>
         </Card>
@@ -247,7 +221,7 @@ export function RegistreTraitements({ userData, accessToken, entityId }: Registr
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
           <input
             type="text"
-            placeholder="Rechercher dans les traitements (nom, finalité, personnes concernées, catégories de données...)"
+            placeholder="Rechercher dans les traitements..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full pl-10 pr-10 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -263,10 +237,9 @@ export function RegistreTraitements({ userData, accessToken, entityId }: Registr
         </div>
       )}
 
-      {/* Results count */}
       {searchTerm && traitements.length > 0 && (
         <div className="text-sm text-gray-600">
-          {filteredTraitements.length} résultat{filteredTraitements.length !== 1 ? 's' : ''} sur {traitements.length} traitement{traitements.length !== 1 ? 's' : ''}
+          {filteredTraitements.length} résultat{filteredTraitements.length !== 1 ? 's' : ''} sur {traitements.length}
         </div>
       )}
 
@@ -294,14 +267,14 @@ export function RegistreTraitements({ userData, accessToken, entityId }: Registr
                         <Database className="h-5 w-5 text-blue-600" />
                       </div>
                       <div className="flex-1">
-                        <CardTitle className="text-xl mb-1">{traitement.nom}</CardTitle>
-                        <CardDescription>{traitement.finalite}</CardDescription>
+                        <CardTitle className="text-xl mb-1">{traitement.name}</CardTitle>
+                        <CardDescription>{traitement.purpose}</CardDescription>
                       </div>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Badge variant={traitement.statut === 'À jour' ? 'default' : 'secondary'}>
-                      {traitement.statut}
+                    <Badge variant={traitement.status === 'active' ? 'default' : 'secondary'}>
+                      {traitement.status === 'active' ? 'Actif' : traitement.status}
                     </Badge>
                     <Button variant="ghost" size="sm" onClick={() => handleViewHistory(traitement)}>
                       <History className="h-4 w-4" />
@@ -317,31 +290,38 @@ export function RegistreTraitements({ userData, accessToken, entityId }: Registr
                 <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
                   <div>
                     <div className="text-gray-500 mb-1">Personnes concernées</div>
-                    <div className="text-gray-900">{traitement.personnesConcernees}</div>
+                    <div className="text-gray-900">
+                      {Array.isArray(traitement.data_subjects)
+                        ? traitement.data_subjects.join(', ')
+                        : traitement.data_subjects || '—'}
+                    </div>
                   </div>
                   <div>
                     <div className="text-gray-500 mb-1">Base juridique</div>
-                    <div className="text-gray-900">{traitement.baseJuridique}</div>
+                    <div className="text-gray-900">{traitement.legal_basis || '—'}</div>
                   </div>
                   <div>
                     <div className="text-gray-500 mb-1">Durée de conservation</div>
-                    <div className="text-gray-900">{traitement.dureeConservation}</div>
+                    <div className="text-gray-900">{traitement.retention_period || '—'}</div>
                   </div>
-                  {traitement.categoriesDonnees && traitement.categoriesDonnees.length > 0 && (
+                  {traitement.data_categories && traitement.data_categories.length > 0 && (
                     <div className="sm:col-span-2 lg:col-span-3">
                       <div className="text-gray-500 mb-2">Catégories de données</div>
                       <div className="flex flex-wrap gap-2">
-                        {traitement.categoriesDonnees.map((cat: string, idx: number) => (
+                        {traitement.data_categories.map((cat: string, idx: number) => (
                           <Badge key={idx} variant="outline">{cat}</Badge>
                         ))}
                       </div>
                     </div>
                   )}
-                  {traitement.mesuresSecurite && traitement.mesuresSecurite.length > 0 && (
+                  {traitement.security_measures && traitement.security_measures.length > 0 && (
                     <div className="sm:col-span-2 lg:col-span-3">
                       <div className="text-gray-500 mb-2">Mesures de sécurité</div>
                       <div className="flex flex-wrap gap-2">
-                        {traitement.mesuresSecurite.map((mesure: string, idx: number) => (
+                        {(Array.isArray(traitement.security_measures)
+                          ? traitement.security_measures
+                          : [traitement.security_measures]
+                        ).map((mesure: string, idx: number) => (
                           <Badge key={idx} variant="secondary" className="bg-green-50 text-green-700">
                             <Shield className="h-3 w-3 mr-1" />
                             {mesure}
@@ -350,10 +330,10 @@ export function RegistreTraitements({ userData, accessToken, entityId }: Registr
                       </div>
                     </div>
                   )}
-                  {traitement.updatedAt && (
+                  {traitement.updated_at && (
                     <div className="flex items-center gap-2 text-gray-500">
                       <Calendar className="h-4 w-4" />
-                      <span>Dernière MAJ : {new Date(traitement.updatedAt).toLocaleDateString('fr-FR')}</span>
+                      <span>Dernière MAJ : {new Date(traitement.updated_at).toLocaleDateString('fr-FR')}</span>
                     </div>
                   )}
                 </div>
@@ -375,10 +355,7 @@ export function RegistreTraitements({ userData, accessToken, entityId }: Registr
       {showHistory && historyItem && (
         <HistoryModal
           module="traitement"
-          itemId={historyItem.id}
-          itemName={historyItem.nom}
-          accessToken={accessToken}
-          clientId={userData.clientId}
+          item={historyItem}
           onClose={() => { setShowHistory(false); setHistoryItem(null); }}
         />
       )}
